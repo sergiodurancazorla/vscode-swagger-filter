@@ -4,9 +4,22 @@ import * as path from 'path';
 import { parse, stringify } from 'yaml';
 import * as yaml from 'js-yaml';
 
+interface FilterParameter {
+	name: string;
+	value: any;
+}
+
+let filterTag: string;
+let filterParameter: FilterParameter;
+
 export function activate(context: vscode.ExtensionContext) {
+
 	let disposable = vscode.commands.registerCommand('swagger-filter.previewFilteredSwagger', async () => {
 		const editor = vscode.window.activeTextEditor;
+		let config = vscode.workspace.getConfiguration('swagger-filter');
+		filterTag = config.get('filterTag', 'NOT EXPOSED');
+		filterParameter = config.get('filterParameter', { name: 'x-docs-read-only', value: true });
+
 		if (!editor) {
 			vscode.window.showErrorMessage('No se encontró un archivo abierto.');
 			return;
@@ -21,14 +34,22 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 
 		try {
-			const filteredSwaggerContent = filterSwagger(swaggerContent);
+			const filteredSwaggerContent = filterSwagger(swaggerContent, filterTag, filterParameter);
 			showSwaggerPreview(filteredSwaggerContent);
 		} catch (error) {
 			vscode.window.showErrorMessage('Ocurrió un error al filtrar el archivo Swagger.');
 		}
 	});
 
-	context.subscriptions.push(disposable);
+	// Create the activity bar item
+	// TODO
+	const activityBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
+	activityBarItem.text = "Swagger Filter";
+	activityBarItem.command = 'swagger-filter.previewFilteredSwagger';
+	activityBarItem.tooltip = "Preview Filtered Swagger";
+	activityBarItem.show();
+
+	context.subscriptions.push(disposable, activityBarItem);
 }
 
 async function loadSwaggerFile(filePath: string): Promise<string> {
@@ -38,8 +59,8 @@ async function loadSwaggerFile(filePath: string): Promise<string> {
 				reject(err);
 			} else {
 				try {
-					const swaggerJson = yaml.load(data);
-					const swaggerContent = JSON.stringify(swaggerJson);
+					let swaggerJson = yaml.load(data);
+					let swaggerContent = JSON.stringify(swaggerJson);
 					resolve(swaggerContent);
 				} catch (error) {
 					reject(error);
@@ -49,7 +70,7 @@ async function loadSwaggerFile(filePath: string): Promise<string> {
 	});
 }
 
-function filterSwagger(swaggerContent: string): string {
+function filterSwagger(swaggerContent: string, filterTag: string, filterParameter: FilterParameter): string {
 	let swaggerJson: any;
 
 	try {
@@ -62,12 +83,18 @@ function filterSwagger(swaggerContent: string): string {
 		}
 	}
 
-	const filteredPaths = Object.keys(swaggerJson.paths).reduce((filtered, pathKey) => {
-		const pathObject = swaggerJson.paths[pathKey];
-		const filteredMethods = Object.keys(pathObject).reduce((filteredMethods, methodKey) => {
-			const methodObject = pathObject[methodKey];
-			const tags = methodObject.tags;
-			if (!tags || !tags.includes('NOT EXPOSED')) {
+	let filteredPaths = Object.keys(swaggerJson.paths).reduce((filtered, pathKey) => {
+		let pathObject = swaggerJson.paths[pathKey];
+		let filteredMethods = Object.keys(pathObject).reduce((filteredMethods, methodKey) => {
+			let methodObject = pathObject[methodKey];
+			let tags = methodObject.tags;
+			let parameters = methodObject;
+			if (
+				(!tags || tags.includes(filterTag)) ||
+				(parameters[filterParameter.name] && parameters[filterParameter.name] === filterParameter.value)
+			) {
+				console.log(`Method '${methodKey}' in path '${pathKey}' is filtered out.`);
+			} else {
 				filteredMethods[methodKey] = methodObject;
 			}
 			return filteredMethods;
@@ -79,7 +106,7 @@ function filterSwagger(swaggerContent: string): string {
 		return filtered;
 	}, {} as any);
 
-	const filteredSwaggerJson = { ...swaggerJson, paths: filteredPaths };
+	let filteredSwaggerJson = { ...swaggerJson, paths: filteredPaths };
 
 	if (swaggerContent.startsWith('---')) {
 		return stringify(filteredSwaggerJson);

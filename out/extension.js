@@ -6,9 +6,14 @@ const fs = require("fs");
 const path = require("path");
 const yaml_1 = require("yaml");
 const yaml = require("js-yaml");
+let filterTag;
+let filterParameter;
 function activate(context) {
     let disposable = vscode.commands.registerCommand('swagger-filter.previewFilteredSwagger', async () => {
         const editor = vscode.window.activeTextEditor;
+        let config = vscode.workspace.getConfiguration('swagger-filter');
+        filterTag = config.get('filterTag', 'NOT EXPOSED');
+        filterParameter = config.get('filterParameter', { name: 'x-docs-read-only', value: true });
         if (!editor) {
             vscode.window.showErrorMessage('No se encontró un archivo abierto.');
             return;
@@ -20,14 +25,21 @@ function activate(context) {
             return;
         }
         try {
-            const filteredSwaggerContent = filterSwagger(swaggerContent);
+            const filteredSwaggerContent = filterSwagger(swaggerContent, filterTag, filterParameter);
             showSwaggerPreview(filteredSwaggerContent);
         }
         catch (error) {
             vscode.window.showErrorMessage('Ocurrió un error al filtrar el archivo Swagger.');
         }
     });
-    context.subscriptions.push(disposable);
+    // Create the activity bar item
+    // TODO
+    const activityBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
+    activityBarItem.text = "Swagger Filter";
+    activityBarItem.command = 'swagger-filter.previewFilteredSwagger';
+    activityBarItem.tooltip = "Preview Filtered Swagger";
+    activityBarItem.show();
+    context.subscriptions.push(disposable, activityBarItem);
 }
 exports.activate = activate;
 async function loadSwaggerFile(filePath) {
@@ -38,8 +50,8 @@ async function loadSwaggerFile(filePath) {
             }
             else {
                 try {
-                    const swaggerJson = yaml.load(data);
-                    const swaggerContent = JSON.stringify(swaggerJson);
+                    let swaggerJson = yaml.load(data);
+                    let swaggerContent = JSON.stringify(swaggerJson);
                     resolve(swaggerContent);
                 }
                 catch (error) {
@@ -49,7 +61,7 @@ async function loadSwaggerFile(filePath) {
         });
     });
 }
-function filterSwagger(swaggerContent) {
+function filterSwagger(swaggerContent, filterTag, filterParameter) {
     let swaggerJson;
     try {
         swaggerJson = JSON.parse(swaggerContent);
@@ -62,12 +74,17 @@ function filterSwagger(swaggerContent) {
             throw new Error('El archivo Swagger no es válido.');
         }
     }
-    const filteredPaths = Object.keys(swaggerJson.paths).reduce((filtered, pathKey) => {
-        const pathObject = swaggerJson.paths[pathKey];
-        const filteredMethods = Object.keys(pathObject).reduce((filteredMethods, methodKey) => {
-            const methodObject = pathObject[methodKey];
-            const tags = methodObject.tags;
-            if (!tags || !tags.includes('NOT EXPOSED')) {
+    let filteredPaths = Object.keys(swaggerJson.paths).reduce((filtered, pathKey) => {
+        let pathObject = swaggerJson.paths[pathKey];
+        let filteredMethods = Object.keys(pathObject).reduce((filteredMethods, methodKey) => {
+            let methodObject = pathObject[methodKey];
+            let tags = methodObject.tags;
+            let parameters = methodObject;
+            if ((!tags || tags.includes(filterTag)) ||
+                (parameters[filterParameter.name] && parameters[filterParameter.name] === filterParameter.value)) {
+                console.log(`Method '${methodKey}' in path '${pathKey}' is filtered out.`);
+            }
+            else {
                 filteredMethods[methodKey] = methodObject;
             }
             return filteredMethods;
@@ -77,7 +94,7 @@ function filterSwagger(swaggerContent) {
         }
         return filtered;
     }, {});
-    const filteredSwaggerJson = { ...swaggerJson, paths: filteredPaths };
+    let filteredSwaggerJson = { ...swaggerJson, paths: filteredPaths };
     if (swaggerContent.startsWith('---')) {
         return (0, yaml_1.stringify)(filteredSwaggerJson);
     }
