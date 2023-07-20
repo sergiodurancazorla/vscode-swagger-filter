@@ -1,8 +1,10 @@
 {
+  "publisher": "sergioduran",
   "name": "swagger-filter",
   "displayName": "swagger filter",
   "description": "",
   "version": "0.0.1",
+  "icon": "icon.png",
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -17,7 +19,26 @@
         "command": "swagger-filter.previewFilteredSwagger",
         "title": "Preview Filtered Swagger"
       }
-    ]
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Swagger Filter",
+      "properties": {
+        "swagger-filter.filterTag": {
+          "type": "string",
+          "default": "NOT EXPOSED",
+          "description": "The tag to use for filtering the Swagger content."
+        },
+        "swagger-filter.filterParameter": {
+          "type": "object",
+          "default": {
+            "name": "x-docs-read-only",
+            "value": true
+          },
+          "description": "Parameter used to filter endpoints"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
