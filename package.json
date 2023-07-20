@@ -3,7 +3,7 @@
   "name": "swagger-filter",
   "displayName": "swagger filter",
   "description": "",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.80.0"
